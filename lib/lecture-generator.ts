@@ -14,27 +14,36 @@ export async function generateLectureJSON(
   faculty: Faculty,
   topic: string,
   objectives: string[],
-  studentLevel: number  // 0-100 competency score
+  studentLevel: number,  // 0-100 competency score
+  parentModuleTopic?: string  // optional parent module context for subtopics
 ): Promise<LectureJSON> {
   const diagramHints = FACULTY_DIAGRAM_HINTS[faculty]
   const levelDesc = studentLevel < 40 ? "beginner" : studentLevel < 70 ? "intermediate" : "advanced"
+  const contextNote = parentModuleTopic
+    ? `\nThis is a subtopic lecture within the broader module: "${parentModuleTopic}". Focus specifically on the subtopic, not the whole module.`
+    : ""
 
-  const prompt = `You are Athena's Tutor subagent. Generate a structured lecture for the following:
+  const prompt = `You are Athena's Tutor subagent. Generate a detailed, thorough lecture for the following:
 
 Faculty: ${faculty}
 Topic: ${topic}
 Student Level: ${levelDesc} (competency score: ${studentLevel}/100)
 Learning Objectives: ${objectives.join(", ")}
+${contextNote}
 
 ${diagramHints}
 
-Create a lecture with 6-8 beats total. Each beat has a durationMs field.
+Create a lecture with 10-15 beats total. Be as detailed as an expert professor — 
+people don't learn complex topics in 5 minutes. Each concept deserves proper depth.
 First beat MUST be a title_card. Last beat MUST be a summary_card.
-Middle beats should mix concept_reveal, code_walkthrough, animated_diagram, equation, graph_plot, comparison_table, clinical_case as appropriate for this faculty.
+Middle beats should mix concept_reveal, code_walkthrough, animated_diagram, equation, 
+graph_plot, comparison_table, clinical_case as appropriate. 
+Use multiple concept_reveal beats to build understanding step by step.
 
 Also generate one narration string per beat (what the tutor voice says during that beat).
+Narration should be detailed and educational — like a professor explaining to a student.
 
-Return ONLY valid JSON matching this schema exactly (no markdown fences):
+Return ONLY valid JSON (no markdown fences):
 {
   "title": "Lecture title",
   "faculty": "${faculty}",
@@ -43,23 +52,19 @@ Return ONLY valid JSON matching this schema exactly (no markdown fences):
   "narration": ["narration for beat 1", "narration for beat 2", ...],
   "beats": [
     { "type": "title_card", "heading": "...", "subheading": "...", "durationMs": 4000 },
-    ...beat objects matching the LectureBeat union type...
-    { "type": "summary_card", "points": ["...", "...", "..."], "durationMs": 5000 }
+    ...
+    { "type": "summary_card", "points": ["...", "...", "..."], "durationMs": 6000 }
   ]
 }
 
-For animated_diagram beats, use this structure:
-{ "type": "animated_diagram", "variant": "<DiagramVariant>", "data": {}, "caption": "...", "durationMs": 6000 }
-
+For animated_diagram beats use: { "type": "animated_diagram", "variant": "<DiagramVariant>", "data": {}, "caption": "...", "durationMs": 8000 }
 Valid DiagramVariant values: call_stack, sorting_viz, tree_traversal, organ_highlight, drug_pathway, vector_field, wave_function, timeline, quote_reveal, color_theory, bar_chart, line_chart
 
-For code_walkthrough beats:
-{ "type": "code_walkthrough", "language": "python", "code": "...", "highlights": [[1,2],[3,4]], "explanation": "...", "durationMs": 8000 }
+For code_walkthrough: { "type": "code_walkthrough", "language": "python", "code": "...", "highlights": [[1,2]], "explanation": "...", "durationMs": 10000 }
+For equation: { "type": "equation", "latex": "...", "explanation": "...", "durationMs": 6000 }
+For concept_reveal: { "type": "concept_reveal", "text": "...", "emphasis": ["word1","word2"], "durationMs": 7000 }
 
-For equation beats:
-{ "type": "equation", "latex": "...", "explanation": "...", "durationMs": 5000 }
-
-Make the content genuinely educational, not superficial. Adapt depth to the student's ${levelDesc} level.`
+Make the content genuinely educational and thorough. Depth matters more than breadth here.`
 
   return gemmaJSON<LectureJSON>(
     [

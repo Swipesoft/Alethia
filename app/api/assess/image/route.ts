@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
           ],
         },
       ],
-    } as Parameters<typeof novita.chat.completions.create>[0])
+    } as Parameters<typeof novita.chat.completions.create>[0]) as Awaited<ReturnType<typeof novita.chat.completions.create>> & { choices: Array<{ message: { content: string | null } }> }
 
     const raw = response.choices[0].message.content ?? ""
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()

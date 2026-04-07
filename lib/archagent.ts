@@ -121,6 +121,14 @@ The 12 modules should form a coherent learning journey from their current level 
       status: i === 0 ? "active" : "locked",
       estimatedDurationMins: m.estimatedDurationMins,
       lectureGenerated: false,
+      // Breadth-wise expansion fields
+      subtopics: [],
+      classworks: [],
+      sequence: [],
+      currentSequenceIndex: 0,
+      sequenceGenerated: false,
+      remedialAttempts: 0,
+      weakSubtopicIndices: [],
       ...env,
     } satisfies Module
   })

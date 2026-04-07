@@ -14,6 +14,41 @@ const STATUS_STYLES: Record<Module["status"], { color: string; label: string; bg
   remedial:  { color: "#f9a8d4", label: "Remedial", bg: "rgba(249,168,212,0.1)" },
 }
 
+// ─── Smart navigation helpers ─────────────────────────────────────────────────
+function getModuleNextRoute(module: Module): string {
+  // Not yet expanded into subtopics → generate sequence first
+  if (!module.sequenceGenerated) {
+    return `/module/${module.moduleId}/start`
+  }
+
+  const seq = module.sequence ?? []
+  const idx = module.currentSequenceIndex ?? 0
+  const currentItem = seq[idx]
+
+  if (!currentItem || currentItem.kind === "module_assessment") {
+    return `/assess/${module.moduleId}`
+  }
+  if (currentItem.kind === "subtopic") {
+    return `/subtopic/${currentItem.id}`
+  }
+  if (currentItem.kind === "classwork") {
+    return `/classwork/${currentItem.id}?moduleId=${module.moduleId}`
+  }
+  return `/assess/${module.moduleId}`
+}
+
+function getModuleCTA(module: Module): string {
+  if (!module.sequenceGenerated) return "Begin Module →"
+  const idx = module.currentSequenceIndex ?? 0
+  const total = (module.sequence ?? []).length
+  if (idx === 0) return "Start First Lesson →"
+  if (idx >= total - 1) return "Take Assessment →"
+  const current = (module.sequence ?? [])[idx]
+  if (current?.kind === "classwork") return "Continue Classwork →"
+  if (current?.kind === "module_assessment") return "Take Assessment →"
+  return `Continue — Step ${idx + 1}/${total} →`
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const [profile, setProfile] = useState<StudentProfile | null>(null)
@@ -51,6 +86,10 @@ export default function DashboardPage() {
   const completedCount = profile.curriculum.filter((m) => m.status === "completed").length
   const progressPct = Math.round((completedCount / profile.curriculum.length) * 100)
   const activeModule = profile.curriculum[profile.currentModuleIndex]
+
+  function navigateToModuleNext(module: Module) {
+    router.push(getModuleNextRoute(module))
+  }
 
   return (
     <main style={{ minHeight: "100vh", background: "var(--bg)" }}>
@@ -210,41 +249,50 @@ export default function DashboardPage() {
                 <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem", marginBottom: "0.75rem" }}>
                   {activeModule.objectives.slice(0, 2).join(" · ")}
                 </p>
+
+                {/* Sequence progress if subtopics exist */}
+                {activeModule.sequenceGenerated && activeModule.sequence?.length > 0 && (
+                  <div style={{ marginBottom: "0.75rem" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.3rem" }}>
+                      <span style={{ fontFamily: "DM Mono, monospace", fontSize: "0.65rem", color: "var(--text-muted)" }}>
+                        SEQUENCE PROGRESS
+                      </span>
+                      <span style={{ fontFamily: "DM Mono, monospace", fontSize: "0.65rem", color: "var(--accent)" }}>
+                        {activeModule.currentSequenceIndex}/{activeModule.sequence.length} steps
+                      </span>
+                    </div>
+                    <div style={{ height: "3px", background: "var(--bg-elevated)", borderRadius: "1.5px", overflow: "hidden" }}>
+                      <div style={{
+                        height: "100%",
+                        width: `${(activeModule.currentSequenceIndex / activeModule.sequence.length) * 100}%`,
+                        background: "var(--accent)",
+                        borderRadius: "1.5px",
+                        transition: "width 0.4s ease",
+                      }} />
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                  <span
-                    style={{
-                      background: "var(--bg-elevated)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "999px",
-                      padding: "0.2rem 0.7rem",
-                      fontSize: "0.7rem",
-                      color: "var(--text-muted)",
-                      fontFamily: "DM Mono, monospace",
-                    }}
-                  >
+                  <span style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "999px", padding: "0.2rem 0.7rem", fontSize: "0.7rem", color: "var(--text-muted)", fontFamily: "DM Mono, monospace" }}>
                     {activeModule.assessmentEnvironment}
                   </span>
-                  <span
-                    style={{
-                      background: "var(--bg-elevated)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "999px",
-                      padding: "0.2rem 0.7rem",
-                      fontSize: "0.7rem",
-                      color: "var(--text-muted)",
-                      fontFamily: "DM Mono, monospace",
-                    }}
-                  >
+                  <span style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "999px", padding: "0.2rem 0.7rem", fontSize: "0.7rem", color: "var(--text-muted)", fontFamily: "DM Mono, monospace" }}>
                     ~{activeModule.estimatedDurationMins} min
                   </span>
+                  {activeModule.sequenceGenerated && (
+                    <span style={{ background: "var(--accent-dim)", border: "1px solid var(--border-glow)", borderRadius: "999px", padding: "0.2rem 0.7rem", fontSize: "0.7rem", color: "var(--accent)", fontFamily: "DM Mono, monospace" }}>
+                      {(activeModule.subtopics?.length ?? 0)} subtopics · {(activeModule.classworks?.length ?? 0)} classworks
+                    </span>
+                  )}
                 </div>
               </div>
               <button
                 className="btn-primary"
-                onClick={() => router.push(`/lecture/${activeModule.moduleId}`)}
+                onClick={() => navigateToModuleNext(activeModule)}
                 style={{ whiteSpace: "nowrap" }}
               >
-                {activeModule.lectureGenerated ? "Resume Lecture →" : "Start Lecture →"}
+                {getModuleCTA(activeModule)}
               </button>
             </div>
           )}
@@ -272,18 +320,23 @@ export default function DashboardPage() {
             >
               {profile.curriculum.map((module, i) => {
                 const st = STATUS_STYLES[module.status]
+                const subtopicsDone = (module.subtopics ?? []).filter(s => s.status === "completed").length
+                const subtopicsTotal = (module.subtopics ?? []).length
+                const seqTotal = (module.sequence ?? []).length
+                const seqDone = module.currentSequenceIndex ?? 0
+
                 return (
                   <div
                     key={module.moduleId}
                     className={i < 3 ? `animate-fade-up-delay-${i + 1}` : ""}
                     onClick={() => {
                       if (module.status === "active" || module.status === "remedial") {
-                        router.push(`/lecture/${module.moduleId}`)
+                        navigateToModuleNext(module)
                       }
                     }}
                     style={{
                       background: st.bg,
-                      border: `1px solid ${module.status === "active" ? "var(--accent)" : "var(--border)"}`,
+                      border: `1px solid ${module.status === "active" ? "var(--accent)" : module.status === "remedial" ? "var(--faculty-medicine)" : "var(--border)"}`,
                       borderRadius: "var(--radius-sm)",
                       padding: "1.25rem",
                       cursor: module.status === "locked" ? "default" : "pointer",
@@ -292,46 +345,59 @@ export default function DashboardPage() {
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.6rem" }}>
-                      <span
-                        style={{
-                          fontFamily: "DM Mono, monospace",
-                          fontSize: "0.65rem",
-                          color: "var(--text-muted)",
-                        }}
-                      >
+                      <span style={{ fontFamily: "DM Mono, monospace", fontSize: "0.65rem", color: "var(--text-muted)" }}>
                         {String(i + 1).padStart(2, "0")}
                       </span>
-                      <span
-                        style={{
-                          fontSize: "0.65rem",
-                          color: st.color,
-                          fontFamily: "DM Mono, monospace",
-                          background: st.bg,
-                          padding: "0.15rem 0.5rem",
-                          borderRadius: "999px",
-                          border: `1px solid ${st.color}30`,
-                        }}
-                      >
-                        {st.label}
-                      </span>
+                      <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                        {module.status === "remedial" && (
+                          <span style={{ fontSize: "0.6rem", color: "#f9a8d4", fontFamily: "DM Mono, monospace" }}>📋 REMEDIAL</span>
+                        )}
+                        <span style={{ fontSize: "0.65rem", color: st.color, fontFamily: "DM Mono, monospace", background: st.bg, padding: "0.15rem 0.5rem", borderRadius: "999px", border: `1px solid ${st.color}30` }}>
+                          {st.label}
+                        </span>
+                      </div>
                     </div>
+
                     <p style={{ fontSize: "0.9rem", fontWeight: 500, marginBottom: "0.25rem", color: "var(--text-primary)", lineHeight: 1.3 }}>
                       {module.title}
                     </p>
-                    <p style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                      {module.assessmentEnvironment} · {module.estimatedDurationMins}min
+
+                    {/* Subtopic count or assessment env */}
+                    <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: subtopicsTotal > 0 ? "0.75rem" : 0 }}>
+                      {subtopicsTotal > 0
+                        ? `${subtopicsTotal} subtopics · ${(module.classworks ?? []).length} classworks`
+                        : `${module.assessmentEnvironment} · ${module.estimatedDurationMins}min`
+                      }
                     </p>
+
+                    {/* Sequence progress bar for active/remedial modules */}
+                    {module.sequenceGenerated && seqTotal > 0 && module.status !== "locked" && (
+                      <div style={{ marginTop: "0.5rem" }}>
+                        <div style={{ height: "3px", background: "var(--bg-elevated)", borderRadius: "1.5px", overflow: "hidden" }}>
+                          <div style={{
+                            height: "100%",
+                            width: `${(seqDone / seqTotal) * 100}%`,
+                            background: module.status === "remedial" ? "#f9a8d4" : "var(--accent)",
+                            borderRadius: "1.5px",
+                            transition: "width 0.4s ease",
+                          }} />
+                        </div>
+                        <p style={{ fontSize: "0.65rem", color: "var(--text-muted)", marginTop: "0.25rem", fontFamily: "DM Mono, monospace" }}>
+                          Step {seqDone}/{seqTotal}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Module score bar for completed modules */}
                     {module.score !== undefined && (
-                      <div style={{ marginTop: "0.75rem" }}>
+                      <div style={{ marginTop: "0.5rem" }}>
                         <div style={{ height: "3px", background: "var(--bg-elevated)", borderRadius: "1.5px" }}>
-                          <div
-                            style={{
-                              height: "100%",
-                              width: `${module.score}%`,
-                              background: module.score >= 70 ? "#6ee7b7" : module.score >= 50 ? "var(--accent)" : "#f9a8d4",
-                              borderRadius: "1.5px",
-                            }}
-                          />
+                          <div style={{
+                            height: "100%",
+                            width: `${module.score}%`,
+                            background: module.score >= 70 ? "#6ee7b7" : module.score >= 50 ? "var(--accent)" : "#f9a8d4",
+                            borderRadius: "1.5px",
+                          }} />
                         </div>
                         <p style={{ fontSize: "0.65rem", color: "var(--text-muted)", marginTop: "0.25rem", fontFamily: "DM Mono, monospace" }}>
                           Score: {module.score}/100

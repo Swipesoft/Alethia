@@ -1,27 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { generateLectureJSON } from "@/lib/lecture-generator"
 import { getStudent, updateModule } from "@/lib/firestore"
-
-// Firestore doesn't support nested arrays — flatten them before saving
-function sanitizeForFirestore(obj: unknown): unknown {
-  if (Array.isArray(obj)) {
-    return obj.map((item) => {
-      if (Array.isArray(item)) {
-        return JSON.stringify(item) // flatten nested array to string
-      }
-      return sanitizeForFirestore(item)
-    })
-  }
-  if (obj !== null && typeof obj === "object") {
-    return Object.fromEntries(
-      Object.entries(obj as Record<string, unknown>).map(([k, v]) => [
-        k,
-        sanitizeForFirestore(v),
-      ])
-    )
-  }
-  return obj
-}
+import { sanitizeForFirestore } from "@/lib/firestore-utils"
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,10 +17,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Module not found" }, { status: 404 })
     }
 
-    const competencyScore =
-      profile.competencyModel[module.topic]?.score ??
-      profile.diagnosticScore ??
-      50
+    const competencyScore = profile.competencyModel[module.topic]?.score ?? profile.diagnosticScore ?? 50
 
     const lectureJSON = await generateLectureJSON(
       module.faculty,
@@ -49,7 +26,6 @@ export async function POST(req: NextRequest) {
       competencyScore
     )
 
-    // Sanitize before saving to Firestore
     const sanitized = sanitizeForFirestore(lectureJSON)
 
     await updateModule(studentId, moduleId, {

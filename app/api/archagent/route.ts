@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { archAgentDecide, generateCurriculum } from "@/lib/archagent"
-import { getStudent, applyArchAgentDecision, logEvent } from "@/lib/firestore"
+import { getStudent, applyArchAgentDecision, logEvent, updateModule } from "@/lib/firestore"
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,12 +14,7 @@ export async function POST(req: NextRequest) {
     switch (action) {
       case "generate_curriculum": {
         const { diagnosticScore, preferences, goals, faculty } = payload
-        const modules = await generateCurriculum(
-          faculty,
-          diagnosticScore,
-          preferences,
-          goals
-        )
+        const modules = await generateCurriculum(faculty, diagnosticScore, preferences, goals)
         return NextResponse.json({ modules })
       }
 
@@ -30,11 +25,19 @@ export async function POST(req: NextRequest) {
         }
         const { moduleScore, errorPatterns } = payload
         const decision = await archAgentDecide(profile, moduleScore, errorPatterns ?? [])
+
+        const currentModule = profile.curriculum[profile.currentModuleIndex]
+        if (currentModule) {
+          await updateModule(studentId, currentModule.moduleId, {
+            archagetNotes: decision.reason,
+          })
+        }
+
         await applyArchAgentDecision(profile.studentId, decision, profile.currentModuleIndex)
         await logEvent({
           studentId,
           type: "module_advanced",
-          moduleId: profile.curriculum[profile.currentModuleIndex]?.moduleId,
+          moduleId: currentModule?.moduleId,
           timestamp: Date.now(),
           payload: { moduleScore, decision },
           archagentDecision: decision.reason,

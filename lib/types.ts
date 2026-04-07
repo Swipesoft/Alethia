@@ -71,6 +71,65 @@ export type AssessmentEnvironment =
   | "image_canvas"
   | "github_ci"
 
+// ─── Subtopic ─────────────────────────────────────────────────────────────────
+export type SubtopicStatus = "locked" | "active" | "completed"
+
+export type Subtopic = {
+  subtopicId: string
+  moduleId: string
+  index: number
+  title: string
+  description: string
+  type: "lecture"
+  status: SubtopicStatus
+  lectureGenerated: boolean
+  lectureJSON?: LectureJSON
+  completedAt?: number
+}
+
+// ─── Classwork ────────────────────────────────────────────────────────────────
+// Separate model from Subtopic — classwork is interactive, not lecture
+export type ClassworkType =
+  | "demonstrate_then_replicate"  // Tutor demos → student replicates in Judge0
+  | "socratic"                    // Student attempts → tutor gives Socratic hints
+  | "collaborative"               // Both work together — used as final classwork
+
+export type ClassworkStatus = "locked" | "active" | "completed"
+
+export type Classwork = {
+  classworkId: string
+  moduleId: string
+  insertAfterSubtopicIndex: number  // Assessor decides placement
+  classworkType: ClassworkType
+  assessmentType: AssessmentType
+  assessmentEnvironment: AssessmentEnvironment
+  title: string
+  prompt: string                    // The task/question
+  starterCode?: string              // For code_execution
+  demonstrationCode?: string        // Tutor's worked example (demonstrate_then_replicate)
+  demonstrationExplanation?: string
+  options?: string[]                // For MCQ
+  correctIndex?: number             // For MCQ
+  rubric?: string
+  status: ClassworkStatus
+  score?: number
+  feedback?: string
+  studentAnswer?: string
+  completedAt?: number
+}
+
+// ─── Module Sequence Item ─────────────────────────────────────────────────────
+// Ordered list of what the student steps through inside a module
+export type SequenceItemKind = "subtopic" | "classwork" | "module_assessment"
+
+export type ModuleSequenceItem = {
+  kind: SequenceItemKind
+  id: string            // subtopicId | classworkId | "module_assessment"
+  title: string
+  status: "locked" | "active" | "completed"
+}
+
+// ─── Module ───────────────────────────────────────────────────────────────────
 export type Module = {
   moduleId: string
   index: number
@@ -82,11 +141,21 @@ export type Module = {
   assessmentType: AssessmentType
   assessmentEnvironment: AssessmentEnvironment
   estimatedDurationMins: number
+  // Breadth-wise expansion
+  subtopics: Subtopic[]
+  classworks: Classwork[]
+  sequence: ModuleSequenceItem[]    // Ordered steps through the module
+  currentSequenceIndex: number
+  sequenceGenerated: boolean
+  // Legacy flat lecture (kept for backward compat during migration)
   lectureGenerated: boolean
   lectureJSON?: LectureJSON
   score?: number
   completedAt?: number
   archagetNotes?: string
+  // Remedial
+  remedialAttempts: number
+  weakSubtopicIndices: number[]     // Subtopics the Reviewer targets
 }
 
 // ─── Lecture JSON (Gemma Output Schema) ───────────────────────────────────────
@@ -147,10 +216,13 @@ export type StudentProfile = {
 // ─── Analytics Events ─────────────────────────────────────────────────────────
 export type AnalyticsEventType =
   | "lecture_completed"
+  | "subtopic_completed"
+  | "classwork_completed"
   | "assessment_submitted"
   | "qa_asked"
   | "module_advanced"
   | "remedial_triggered"
+  | "reviewer_triggered"
   | "curriculum_restructured"
 
 export type AnalyticsEvent = {
@@ -189,4 +261,17 @@ export type ArchAgentDecision = {
   reason: string
   nextModuleIndex?: number
   modifications?: Partial<Module>[]
+}
+
+// ─── Reviewer Decision ────────────────────────────────────────────────────────
+export type ReviewerDecision = {
+  weakSubtopicIndices: number[]           // Which subtopics to remediate
+  weaknessNotes: string                   // Diagnostician's analysis
+  remedialSubtopics: Array<{
+    title: string
+    description: string
+    targetSubtopicIndex: number           // Which original subtopic it remediates
+  }>
+  collaborativeTaskPrompt: string         // Final collaborative classwork prompt
+  collaborativeStarterCode?: string
 }

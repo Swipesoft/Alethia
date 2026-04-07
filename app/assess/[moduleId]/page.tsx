@@ -3,7 +3,7 @@
 import { use, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { getStudentId } from "@/lib/student-identity"
-import { getStudent, updateModule, logEvent } from "@/lib/firestore"
+import { getStudent, updateModule, logEvent, updateCompetencyModel } from "@/lib/firestore"
 //import { gemmaJSON } from "@/lib/novita"
 import type { StudentProfile, Module, AssessmentQuestion, AssessmentResult } from "@/lib/types"
 import { ImageUploadAssessor } from "@/components/assessment/ImageUploadAssessor"
@@ -146,12 +146,14 @@ export default function AssessPage({ params }: { params: Promise<{ moduleId: str
     setFinalScore(averageScore)
     setResults(assessmentResults)
 
-    // Update module score
     const studentId = profile.studentId
+
+    // Update module score + competency model
     await updateModule(studentId, module.moduleId, { score: averageScore })
+    await updateCompetencyModel(studentId, module.topic, averageScore)
     await logEvent({ studentId, type: "assessment_submitted", moduleId: module.moduleId, timestamp: Date.now(), payload: { averageScore, errorPatterns } })
 
-    // Call ArchAgent
+    // Call ArchAgent for progression decision
     const decisionRes = await fetch("/api/archagent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -159,6 +161,26 @@ export default function AssessPage({ params }: { params: Promise<{ moduleId: str
     })
     const { decision } = await decisionRes.json()
     setArchagentDecision(decision?.reason ?? null)
+
+    // If score < 60 → trigger Reviewer for remedial plan
+    if (averageScore < 60) {
+      try {
+        await fetch("/api/reviewer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            studentId,
+            moduleId: module.moduleId,
+            moduleScore: averageScore,
+            errorPatterns,
+          }),
+        })
+        // Reviewer decision shown via archagetNotes on dashboard
+      } catch (err) {
+        console.error("Reviewer failed:", err)
+      }
+    }
+
     setSubmitting(false)
   }
 
