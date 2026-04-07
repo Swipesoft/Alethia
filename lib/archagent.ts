@@ -1,4 +1,9 @@
 import { gemmaJSON } from "./novita"
+import {
+  RawCurriculumSchema,
+  ArchAgentDecisionSchema,
+  DiagnosticSchema,
+} from "./schemas"
 import type {
   Faculty,
   Module,
@@ -10,37 +15,25 @@ import type {
 } from "./types"
 import { v4 as uuidv4 } from "uuid"
 
-// ─── Compiler: validate ArchAgent decisions against policy ────────────────────
+// ─── Compiler ─────────────────────────────────────────────────────────────────
 function compile(decision: ArchAgentDecision, profile: StudentProfile): {
   valid: boolean
   reason?: string
 } {
   const current = profile.curriculum[profile.currentModuleIndex]
-
-  // Policy: cannot advance if score < 60
   if (decision.action === "advance" && (current?.score ?? 0) < 60) {
-    return {
-      valid: false,
-      reason: "Compiler: Score below 60 threshold. Triggering remedial instead.",
-    }
+    return { valid: false, reason: "Compiler: Score below 60. Triggering remedial." }
   }
-
-  // Policy: cannot complete course if more than 20% modules are in remedial
   if (decision.action === "complete") {
     const remedialCount = profile.curriculum.filter((m) => m.status === "remedial").length
-    const ratio = remedialCount / profile.curriculum.length
-    if (ratio > 0.2) {
-      return {
-        valid: false,
-        reason: "Compiler: Too many unresolved remedial modules. Cannot mark complete.",
-      }
+    if (remedialCount / profile.curriculum.length > 0.2) {
+      return { valid: false, reason: "Compiler: Too many unresolved remedial modules." }
     }
   }
-
   return { valid: true }
 }
 
-// ─── Faculty → default assessment environment mapping ────────────────────────
+// ─── Faculty → assessment environment ────────────────────────────────────────
 function getDefaultEnvironment(faculty: Faculty, topic: string): {
   assessmentType: AssessmentType
   assessmentEnvironment: AssessmentEnvironment
@@ -65,7 +58,7 @@ function getDefaultEnvironment(faculty: Faculty, topic: string): {
   }
 }
 
-// ─── Generate curriculum from diagnostic ─────────────────────────────────────
+// ─── Generate curriculum ──────────────────────────────────────────────────────
 export async function generateCurriculum(
   faculty: Faculty,
   diagnosticScore: number,
@@ -74,40 +67,33 @@ export async function generateCurriculum(
 ): Promise<Module[]> {
   const prompt = `You are Athena, the world's first ArchAgent for education.
 
-A student has just completed their diagnostic assessment for the ${faculty} faculty.
-
+A student has completed their diagnostic assessment for the ${faculty} faculty.
 Diagnostic Score: ${diagnosticScore}/100
 Learning Goals: ${goals}
 Learning Style: ${preferences.learningStyle}
 Pace: ${preferences.pace}
 
-Generate a personalized curriculum of exactly 12 modules for this student.
-The curriculum must be adaptive — if their score is low, start from fundamentals.
-If their score is high, skip basics and go deeper into advanced topics.
+Generate a personalised curriculum of exactly 12 modules.
+If score is low, start from fundamentals. If high, go deeper into advanced topics.
 
-Return ONLY a JSON array with this exact structure (no markdown, no explanation):
+Return ONLY a JSON array (no markdown):
 [
   {
     "title": "Module title",
     "topic": "Specific topic name",
     "objectives": ["objective 1", "objective 2", "objective 3"],
-    "estimatedDurationMins": 45
+    "estimatedDurationMins": 60
   }
-]
+]`
 
-The 12 modules should form a coherent learning journey from their current level to mastery.`
-
-  type RawModule = {
-    title: string
-    topic: string
-    objectives: string[]
-    estimatedDurationMins: number
-  }
-
-  const raw = await gemmaJSON<RawModule[]>([
-    { role: "system", content: "You are Athena, an adaptive education ArchAgent. Always return valid JSON only." },
-    { role: "user", content: prompt },
-  ])
+  const raw = await gemmaJSON(
+    [
+      { role: "system", content: "You are Athena, an adaptive education ArchAgent. Return valid JSON only." },
+      { role: "user", content: prompt },
+    ],
+    RawCurriculumSchema,
+    { temperature: 0.4 }
+  )
 
   return raw.map((m, i) => {
     const env = getDefaultEnvironment(faculty, m.topic)
@@ -117,11 +103,10 @@ The 12 modules should form a coherent learning journey from their current level 
       title: m.title,
       topic: m.topic,
       faculty,
-      objectives: m.objectives,
-      status: i === 0 ? "active" : "locked",
-      estimatedDurationMins: m.estimatedDurationMins,
+      objectives: m.objectives ?? ["Understand the topic"],
+      status: (i === 0 ? "active" : "locked") as "active" | "locked",
+      estimatedDurationMins: m.estimatedDurationMins ?? 60,
       lectureGenerated: false,
-      // Breadth-wise expansion fields
       subtopics: [],
       classworks: [],
       sequence: [],
@@ -148,50 +133,53 @@ export async function archAgentDecide(
 Student: ${profile.name}
 Faculty: ${profile.faculty}
 Current Module: "${currentModule?.title}" (index ${profile.currentModuleIndex})
-Score on this module: ${moduleScore}/100
-Error patterns observed: ${errorPatterns.join(", ") || "None"}
-Is this the last module: ${isLastModule}
-
-Previous module scores: ${profile.curriculum
-    .filter((m) => m.status === "completed")
-    .map((m) => `${m.title}: ${m.score ?? "N/A"}`)
-    .join(", ") || "None yet"}
-
-Based on this evidence, decide what the ArchAgent should do next.
+Score: ${moduleScore}/100
+Error patterns: ${errorPatterns.join(", ") || "None"}
+Is last module: ${isLastModule}
+Previous scores: ${profile.curriculum.filter((m) => m.status === "completed").map((m) => `${m.title}: ${m.score ?? "N/A"}`).join(", ") || "None yet"}
 
 Rules:
-- Score >= 80: advance to next module
-- Score 60-79: advance but flag for review
-- Score < 60: trigger remedial loop
-- If this is the last module and score >= 60: complete the course
-- If you detect a pattern of repeated failures on same concept: restructure curriculum
+- Score >= 80: advance
+- Score 60-79: advance but flag
+- Score < 60: remedial
+- Last module + score >= 60: complete
+- Repeated failures on same concept: restructure
 
-Return ONLY a JSON object (no markdown):
+Return ONLY JSON (no markdown):
 {
   "action": "advance" | "remedial" | "restructure" | "complete",
-  "reason": "Brief explanation of why this decision was made",
+  "reason": "Brief explanation",
   "nextModuleIndex": <number, only if restructuring>
 }`
 
-  const decision = await gemmaJSON<ArchAgentDecision>([
-    { role: "system", content: "You are Athena's ArchAgent. Return valid JSON only." },
-    { role: "user", content: prompt },
-  ])
+  const decision = await gemmaJSON(
+    [
+      { role: "system", content: "You are Athena's ArchAgent. Return valid JSON only." },
+      { role: "user", content: prompt },
+    ],
+    ArchAgentDecisionSchema,
+    { temperature: 0.2 }
+  )
 
-  // Pass through Compiler
-  const compilerResult = compile(decision, profile)
+  // Normalise Zod output to match ArchAgentDecision (reason has a default so it's always present)
+  const normalisedDecision: ArchAgentDecision = {
+    action: decision.action,
+    reason: decision.reason ?? "Decision made.",
+    nextModuleIndex: decision.nextModuleIndex,
+  }
+
+  const compilerResult = compile(normalisedDecision, profile)
   if (!compilerResult.valid) {
-    // Compiler override
     return {
-      action: "remedial",
+      action: "remedial" as const,
       reason: compilerResult.reason ?? "Compiler policy override",
     }
   }
 
-  return decision
+  return normalisedDecision
 }
 
-// ─── Generate diagnostic assessment ──────────────────────────────────────────
+// ─── Generate diagnostic ──────────────────────────────────────────────────────
 export async function generateDiagnostic(faculty: Faculty, goals: string) {
   const prompt = `Generate a 5-question diagnostic assessment for the ${faculty} faculty.
 Student goals: ${goals}
@@ -205,20 +193,17 @@ Return ONLY JSON (no markdown):
       "type": "mcq",
       "options": ["A", "B", "C", "D"],
       "correctIndex": 0,
-      "difficulty": "beginner" | "intermediate" | "advanced"
+      "difficulty": "beginner"
     }
   ]
 }`
 
-  return gemmaJSON<{ questions: Array<{
-    id: string
-    question: string
-    type: string
-    options: string[]
-    correctIndex: number
-    difficulty: string
-  }> }>([
-    { role: "system", content: "You are Athena, an adaptive education ArchAgent. Return valid JSON only." },
-    { role: "user", content: prompt },
-  ])
+  return gemmaJSON(
+    [
+      { role: "system", content: "You are Athena, an adaptive education ArchAgent. Return valid JSON only." },
+      { role: "user", content: prompt },
+    ],
+    DiagnosticSchema,
+    { temperature: 0.3 }
+  )
 }

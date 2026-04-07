@@ -1,13 +1,14 @@
 import { gemmaJSON } from "./novita"
+import { SubtopicPlanSchema, ClassworkPlanSchema } from "./schemas"
 import type {
   Faculty,
   Module,
   Subtopic,
   Classwork,
   ModuleSequenceItem,
+  ClassworkType,
   AssessmentType,
   AssessmentEnvironment,
-  ClassworkType,
   LectureJSON,
 } from "./types"
 import { v4 as uuidv4 } from "uuid"
@@ -17,14 +18,13 @@ export async function generateSubtopicPlan(
   module: Module,
   studentCompetencyScore: number
 ): Promise<Array<{ title: string; description: string }>> {
-
   const levelDesc = studentCompetencyScore < 40
-    ? "beginner — needs fundamentals explained from scratch"
+    ? "beginner — needs fundamentals from scratch"
     : studentCompetencyScore < 70
       ? "intermediate — familiar with basics, needs depth"
       : "advanced — needs expert-level depth and edge cases"
 
-  const prompt = `You are Athena's TutorAgent — an expert professor designing a detailed chapter plan.
+  const prompt = `You are Athena's TutorAgent — an expert professor designing a chapter plan.
 
 Module: "${module.title}"
 Topic: ${module.topic}
@@ -32,30 +32,32 @@ Faculty: ${module.faculty}
 Student Level: ${levelDesc} (score: ${studentCompetencyScore}/100)
 Learning Objectives: ${module.objectives.join(", ")}
 
-Generate between 4 and 7 subtopic lectures that together fully cover this module.
-Think like a university professor structuring a chapter — each subtopic should be
-a complete, standalone lesson that builds on the previous one.
+Generate between 4 and 7 subtopic lectures that fully cover this module.
+Think like a university professor structuring a chapter.
+Each subtopic should be a complete standalone lesson (10-15 beats each, ~8-12 mins).
 
-For a beginner, start from first principles and build up slowly.
-For an advanced student, skip obvious basics and go deep immediately.
-
-Each subtopic should have enough depth for 10-15 lecture beats (roughly 8-12 minutes of content).
-
-Return ONLY valid JSON (no markdown):
+Return ONLY valid JSON array (no markdown):
 [
   {
     "title": "Subtopic title",
-    "description": "1-2 sentence description of exactly what this subtopic covers and why it matters"
+    "description": "1-2 sentence description of what this subtopic covers and why it matters"
   }
 ]`
 
-  return gemmaJSON<Array<{ title: string; description: string }>>(
+  const result = await gemmaJSON(
     [
       { role: "system", content: "You are Athena's TutorAgent. Return valid JSON only." },
       { role: "user", content: prompt },
     ],
+    SubtopicPlanSchema,
     { temperature: 0.4 }
   )
+
+  // Ensure description is never undefined
+  return result.map((s) => ({
+    title: s.title,
+    description: s.description ?? "",
+  }))
 }
 
 // ─── Step 2: AssessorAgent designs classwork interleaving ─────────────────────
@@ -77,14 +79,13 @@ export async function generateClassworkPlan(
   correctIndex?: number
   rubric?: string
 }>> {
-
   const facultyAssessmentGuidance: Record<Faculty, string> = {
-    programming: "Prefer code_execution with Judge0. Use demonstrate_then_replicate for syntax-heavy topics, socratic for logic/algorithms.",
-    medicine: "Use mcq for factual recall, essay for clinical reasoning. Prefer socratic classwork style.",
-    stem: "Use code_execution for computation problems, essay for proofs. demonstrate_then_replicate works well.",
-    law: "Use essay exclusively. Prefer socratic style to develop argumentation skills.",
-    humanities: "Use essay. Prefer socratic style for analysis, collaborative for synthesis tasks.",
-    arts: "Use image_upload where possible. Socratic for critique, collaborative for final creative task.",
+    programming: "Prefer code_execution. Use demonstrate_then_replicate for syntax, socratic for logic.",
+    medicine: "Use mcq for factual recall, essay for clinical reasoning. Prefer socratic.",
+    stem: "Use code_execution for computation. demonstrate_then_replicate works well.",
+    law: "Use essay exclusively. Prefer socratic for argumentation.",
+    humanities: "Use essay. Prefer socratic for analysis, collaborative for synthesis.",
+    arts: "Use image_upload where possible. Socratic for critique, collaborative for final task.",
   }
 
   const subtopicList = subtopics
@@ -93,31 +94,22 @@ export async function generateClassworkPlan(
 
   const prompt = `You are Athena's AssessorAgent — an expert educational designer.
 
-You have reviewed the following subtopic lectures for module "${module.title}":
+Subtopic lectures for module "${module.title}":
 ${subtopicList}
 
-Student competency score: ${studentCompetencyScore}/100
-Known error patterns: ${errorPatterns.join(", ") || "None yet"}
+Student competency: ${studentCompetencyScore}/100
+Error patterns: ${errorPatterns.join(", ") || "None"}
 Faculty: ${module.faculty}
-Assessment guidance: ${facultyAssessmentGuidance[module.faculty]}
+Guidance: ${facultyAssessmentGuidance[module.faculty]}
 
-Design classwork sessions to be interleaved between subtopics.
+Design classwork sessions to interleave between subtopics.
 Rules:
-- Do NOT place classwork after every subtopic — use your pedagogical judgment
-- Place classwork after subtopics where practice is most valuable
-- A student with low competency needs MORE classworks (3-4 total)
-- A student with high competency needs FEWER classworks (1-2 total)  
-- The FINAL classwork before module assessment must ALWAYS be "collaborative" type
-- For demonstrate_then_replicate: include a demonstrationCode example the tutor shows first
+- Do NOT place classwork after every subtopic — use pedagogical judgment
+- Low competency student (score < 50): 3-4 classworks
+- High competency student (score >= 70): 1-2 classworks
+- FINAL classwork MUST always be "collaborative" type
+- For demonstrate_then_replicate: include demonstrationCode the tutor shows first
 - For socratic: write a prompt that guides discovery through questions
-- For collaborative: write a comprehensive task that ties the whole module together
-
-classworkType options:
-- "demonstrate_then_replicate": tutor shows worked example → student replicates
-- "socratic": student attempts → tutor gives hints if stuck
-- "collaborative": both work together simultaneously (use for final classwork only)
-
-assessmentType options: "code_execution", "mcq", "essay", "image_upload"
 
 Return ONLY valid JSON array (no markdown):
 [
@@ -126,12 +118,10 @@ Return ONLY valid JSON array (no markdown):
     "classworkType": "demonstrate_then_replicate",
     "assessmentType": "code_execution",
     "title": "Classwork title",
-    "prompt": "Detailed task description for the student",
-    "starterCode": "# starter code here (for code_execution only)",
-    "demonstrationCode": "# tutor's worked example (for demonstrate_then_replicate only)",
-    "demonstrationExplanation": "Step by step explanation of the demo",
-    "options": ["A","B","C","D"],
-    "correctIndex": 0,
+    "prompt": "Detailed task description",
+    "starterCode": "# starter code",
+    "demonstrationCode": "# tutor example",
+    "demonstrationExplanation": "Step by step walkthrough",
     "rubric": "Grading criteria"
   }
 ]`
@@ -141,11 +131,12 @@ Return ONLY valid JSON array (no markdown):
       { role: "system", content: "You are Athena's AssessorAgent. Return valid JSON only." },
       { role: "user", content: prompt },
     ],
+    ClassworkPlanSchema,
     { temperature: 0.3 }
   )
 }
 
-// ─── Step 3: Assemble full module sequence ────────────────────────────────────
+// ─── Step 3: Assemble sequence ────────────────────────────────────────────────
 export function assembleModuleSequence(
   moduleId: string,
   faculty: Faculty,
@@ -168,7 +159,6 @@ export function assembleModuleSequence(
   classworks: Classwork[]
   sequence: ModuleSequenceItem[]
 } {
-  // Build subtopics
   const subtopics: Subtopic[] = subtopicPlans.map((s, i) => ({
     subtopicId: uuidv4(),
     moduleId,
@@ -180,8 +170,7 @@ export function assembleModuleSequence(
     lectureGenerated: false,
   }))
 
-  // Build classworks
-  const classworks: Classwork[] = classworkPlans.map((c, i) => {
+  const classworks: Classwork[] = classworkPlans.map((c) => {
     const env = getClassworkEnvironment(faculty, c.assessmentType)
     return {
       classworkId: uuidv4(),
@@ -202,19 +191,15 @@ export function assembleModuleSequence(
     }
   })
 
-  // Build interleaved sequence
   const sequence: ModuleSequenceItem[] = []
 
   subtopics.forEach((sub, i) => {
-    // Add the subtopic
     sequence.push({
       kind: "subtopic",
       id: sub.subtopicId,
       title: sub.title,
       status: i === 0 ? "active" : "locked",
     })
-
-    // Add any classworks that go after this subtopic
     classworks
       .filter((cw) => cw.insertAfterSubtopicIndex === i)
       .forEach((cw) => {
@@ -227,7 +212,6 @@ export function assembleModuleSequence(
       })
   })
 
-  // Final module assessment always last
   sequence.push({
     kind: "module_assessment",
     id: "module_assessment",
@@ -238,7 +222,7 @@ export function assembleModuleSequence(
   return { subtopics, classworks, sequence }
 }
 
-// ─── Generate a single subtopic's LectureJSON ─────────────────────────────────
+// ─── Generate subtopic lecture ────────────────────────────────────────────────
 export async function generateSubtopicLecture(
   subtopic: Subtopic,
   module: Module,
@@ -250,7 +234,7 @@ export async function generateSubtopicLecture(
     subtopic.title,
     [subtopic.description],
     studentCompetencyScore,
-    module.topic  // parent module context
+    module.topic
   )
 }
 
@@ -263,6 +247,5 @@ function getClassworkEnvironment(
     return faculty === "stem" ? "jupyter" : "judge0"
   }
   if (assessmentType === "image_upload") return "image_canvas"
-  if (assessmentType === "essay" || assessmentType === "mcq") return "essay_box"
-  return "judge0"
+  return "essay_box"
 }

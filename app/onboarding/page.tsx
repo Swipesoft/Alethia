@@ -4,9 +4,9 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { getOrCreateStudentId } from "@/lib/student-identity"
 import { createStudent } from "@/lib/firestore"
-import { generateDiagnostic, generateCurriculum } from "@/lib/archagent"
 import { FACULTY_META } from "@/lib/types"
 import type { Faculty, LearnerPreferences } from "@/lib/types"
+import { OnboardingNameSchema, OnboardingGoalsSchema } from "@/lib/schemas"
 
 type Step = "identity" | "faculty" | "goals" | "diagnostic" | "generating"
 
@@ -23,13 +23,35 @@ export default function OnboardingPage() {
   const router = useRouter()
   const [step, setStep] = useState<Step>("identity")
   const [name, setName] = useState("")
+  const [nameError, setNameError] = useState("")
   const [faculty, setFaculty] = useState<Faculty | null>(null)
   const [goals, setGoals] = useState("")
+  const [goalsError, setGoalsError] = useState("")
   const [pace, setPace] = useState<LearnerPreferences["pace"]>("normal")
   const [style, setStyle] = useState<LearnerPreferences["learningStyle"]>("visual")
   const [questions, setQuestions] = useState<DiagnosticQuestion[]>([])
   const [answers, setAnswers] = useState<Record<string, number>>({})
   const [statusMsg, setStatusMsg] = useState("")
+
+  function validateName(): boolean {
+    const result = OnboardingNameSchema.safeParse({ name })
+    if (!result.success) {
+      setNameError(result.error.issues[0]?.message ?? "Invalid name")
+      return false
+    }
+    setNameError("")
+    return true
+  }
+
+  function validateGoals(): boolean {
+    const result = OnboardingGoalsSchema.safeParse({ goals, pace, learningStyle: style })
+    if (!result.success) {
+      setGoalsError(result.error.issues[0]?.message ?? "Invalid goals")
+      return false
+    }
+    setGoalsError("")
+    return true
+  }
 
   // ── Step handlers ────────────────────────────────────────────────────────────
   async function handleGoalsSubmit() {
@@ -136,15 +158,18 @@ export default function OnboardingPage() {
               className="input-field"
               placeholder="Enter your name..."
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && name.trim() && setStep("faculty")}
+              onChange={(e) => { setName(e.target.value); setNameError("") }}
+              onKeyDown={(e) => e.key === "Enter" && validateName() && setStep("faculty")}
               autoFocus
             />
+            {nameError && (
+              <p style={{ fontSize: "0.8rem", color: "#f9a8d4", fontFamily: "DM Mono, monospace" }}>
+                ⚠ {nameError}
+              </p>
+            )}
             <button
               className="btn-primary"
-              disabled={!name.trim()}
-              onClick={() => setStep("faculty")}
-              style={{ opacity: name.trim() ? 1 : 0.4 }}
+              onClick={() => validateName() && setStep("faculty")}
             >
               Continue →
             </button>
@@ -206,12 +231,17 @@ export default function OnboardingPage() {
             </div>
             <textarea
               className="input-field"
-              placeholder={`e.g. "I want to master Python for data science and machine learning. I already know JavaScript."`}
+              placeholder={`e.g. "I want to master Python for data science. I already know JavaScript."`}
               value={goals}
-              onChange={(e) => setGoals(e.target.value)}
+              onChange={(e) => { setGoals(e.target.value); setGoalsError("") }}
               rows={3}
               style={{ resize: "none" }}
             />
+            {goalsError && (
+              <p style={{ fontSize: "0.8rem", color: "#f9a8d4", fontFamily: "DM Mono, monospace" }}>
+                ⚠ {goalsError}
+              </p>
+            )}
             <div style={{ display: "flex", gap: "1rem" }}>
               <div style={{ flex: 1 }}>
                 <label style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontFamily: "DM Mono, monospace", display: "block", marginBottom: "0.5rem" }}>
@@ -246,9 +276,7 @@ export default function OnboardingPage() {
             </div>
             <button
               className="btn-primary"
-              disabled={!goals.trim()}
-              onClick={handleGoalsSubmit}
-              style={{ opacity: goals.trim() ? 1 : 0.4 }}
+              onClick={() => validateGoals() && handleGoalsSubmit()}
             >
               Generate Diagnostic →
             </button>

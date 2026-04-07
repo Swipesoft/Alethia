@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { gemmaJSON } from "@/lib/novita"
-import type { AssessmentQuestion } from "@/lib/types"
+import { AssessmentQuestionsSchema } from "@/lib/schemas"
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,27 +10,31 @@ export async function POST(req: NextRequest) {
 Assessment environment: ${assessmentEnvironment}
 Objectives: ${objectives.join(", ")}
 
-Return ONLY JSON:
+Return ONLY valid JSON (no markdown):
 {
   "questions": [
     {
       "questionId": "q1",
       "prompt": "Question text",
       "type": "${assessmentType}",
-      "starterCode": "# starter code (only for code_execution type)",
+      "starterCode": "# starter code (for code_execution only)",
       "options": ["A","B","C","D"],
       "correctIndex": 0,
-      "rubric": "Grading rubric"
+      "rubric": "Grading criteria"
     }
   ]
 }`
 
-    const result = await gemmaJSON<{ questions: AssessmentQuestion[] }>([
-      { role: "system", content: "You are Athena's Assessor. Return valid JSON only." },
-      { role: "user", content: prompt },
-    ])
+    const result = await gemmaJSON(
+      [
+        { role: "system", content: "You are Athena's Assessor. Return valid JSON only." },
+        { role: "user", content: prompt },
+      ],
+      AssessmentQuestionsSchema,
+      { temperature: 0.3 }
+    )
 
-    return NextResponse.json({ questions: result.questions ?? [] })
+    return NextResponse.json({ questions: result.questions })
   } catch (err) {
     console.error("[assess/questions]", err)
     return NextResponse.json({ questions: [] }, { status: 500 })

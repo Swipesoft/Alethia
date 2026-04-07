@@ -265,13 +265,13 @@ export type ArchAgentDecision = {
 
 // ─── Reviewer Decision ────────────────────────────────────────────────────────
 export type ReviewerDecision = {
-  weakSubtopicIndices: number[]           // Which subtopics to remediate
-  weaknessNotes: string                   // Diagnostician's analysis
+  weakSubtopicIndices: number[]
+  weaknessNotes: string
   remedialSubtopics: Array<{
     title: string
     description: string
-    targetSubtopicIndex: number           // Which original subtopic it remediates
+    targetSubtopicIndex: number
   }>
-  collaborativeTaskPrompt: string         // Final collaborative classwork prompt
+  collaborativeTaskPrompt: string
   collaborativeStarterCode?: string
 }
