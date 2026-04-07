@@ -1,0 +1,29 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ── Assessment image uploads ─────────────────────────────────────────────
+    // Path: assessments/{studentId}/{moduleId}/{questionId}/{filename}
+    match /assessments/{studentId}/{moduleId}/{questionId}/{filename} {
+
+      // Allow upload if:
+      // 1. File is an image (MIME type check)
+      // 2. File is under 10MB
+      // 3. studentId in path is a valid UUID-like string (non-empty, reasonable length)
+      allow write: if
+        request.resource.contentType.matches("image/.*") &&
+        request.resource.size <= 10 * 1024 * 1024 &&
+        studentId.size() >= 10 &&
+        studentId.size() <= 100;
+
+      // Allow public read so Gemma VLM can access the URL
+      allow read: if true;
+    }
+
+    // ── Deny everything else ─────────────────────────────────────────────────
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

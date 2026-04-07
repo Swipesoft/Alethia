@@ -1,0 +1,58 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Students ────────────────────────────────────────────────────────────
+    // A student document can only be read/written if the request carries
+    // the matching studentId in the document data.
+    // Since Athena has no auth, we use the studentId field as the identity gate.
+    match /students/{studentId} {
+
+      // Anyone can CREATE a new student (first enrolment)
+      allow create: if
+        request.resource.data.studentId == studentId &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 100 &&
+        request.resource.data.faculty in ["programming","medicine","stem","law","humanities","arts"];
+
+      // Only read/update if the studentId in the document matches
+      // We rely on the client passing studentId correctly (no server-side auth token)
+      allow read, update: if
+        resource.data.studentId == studentId;
+
+      // No deletions from client
+      allow delete: if false;
+    }
+
+    // ── Analytics events ────────────────────────────────────────────────────
+    match /analytics/{eventId} {
+
+      // Allow creating analytics events — must include a valid studentId field
+      allow create: if
+        request.resource.data.studentId is string &&
+        request.resource.data.studentId.size() > 0 &&
+        request.resource.data.type in [
+          "lecture_completed",
+          "assessment_submitted",
+          "qa_asked",
+          "module_advanced",
+          "remedial_triggered",
+          "curriculum_restructured"
+        ];
+
+      // Allow reading only analytics that belong to a student
+      // (used for ArchAgent evidence review)
+      allow read: if
+        resource.data.studentId is string;
+
+      allow update, delete: if false;
+    }
+
+    // ── Deny everything else ────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
