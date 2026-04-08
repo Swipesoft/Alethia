@@ -283,33 +283,48 @@ function VectorFieldViz() {
 
 // ── Organ Highlight ───────────────────────────────────────────────────────────
 function OrganHighlightViz({ data }: { data: unknown }) {
-  const organ = (data as Record<string, string>)?.organ ?? "heart"
+  function parseOrganData(raw: unknown): string {
+    if (typeof raw === "string") {
+      try { return (JSON.parse(raw) as Record<string, string>)?.organ ?? "heart" } catch { return "heart" }
+    }
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      return (raw as Record<string, string>)?.organ ?? "heart"
+    }
+    return "heart"
+  }
+
+  const organ = parseOrganData(data)
   const [pulse, setPulse] = useState(false)
+
   useEffect(() => {
     const interval = setInterval(() => setPulse((v) => !v), 800)
     return () => clearInterval(interval)
   }, [])
 
   const organMap: Record<string, { path: string; color: string; label: string }> = {
-    heart:  { color: "#f9a8d4", label: "Heart", path: "M100,60 C100,40 120,30 140,50 C160,30 180,40 180,60 C180,90 140,120 140,120 C140,120 100,90 100,60Z" },
-    lungs:  { color: "#93c5fd", label: "Lungs", path: "M70,40 C60,40 50,60 55,100 C60,120 80,130 100,120 L100,40 Z M130,40 C140,40 150,60 145,100 C140,120 120,130 100,120 L100,40 Z" },
-    brain:  { color: "#d8b4fe", label: "Brain", path: "M60,80 C60,50 80,30 115,30 C150,30 175,50 175,80 C175,110 155,130 115,130 C75,130 60,110 60,80Z" },
+    heart: { color: "#f9a8d4", label: "Heart", path: "M100,60 C100,40 120,30 140,50 C160,30 180,40 180,60 C180,90 140,120 140,120 C140,120 100,90 100,60Z" },
+    lungs: { color: "#93c5fd", label: "Lungs", path: "M70,40 C60,40 50,60 55,100 C60,120 80,130 100,120 L100,40 Z M130,40 C140,40 150,60 145,100 C140,120 120,130 100,120 L100,40 Z" },
+    brain: { color: "#d8b4fe", label: "Brain", path: "M60,80 C60,50 80,30 115,30 C150,30 175,50 175,80 C175,110 155,130 115,130 C75,130 60,110 60,80Z" },
   }
   const o = organMap[organ] ?? organMap.heart
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem" }}>
       <svg width="240" height="180" viewBox="0 0 240 180">
-        {/* Body outline */}
         <ellipse cx="120" cy="90" rx="80" ry="75" fill="var(--bg-elevated)" stroke="var(--border)" strokeWidth={1.5} />
-        {/* Organ */}
         <path
           d={o.path}
           fill={o.color}
           opacity={pulse ? 0.9 : 0.6}
-          style={{ transform: `translate(${(240 - 240) / 2}px, ${(180 - 180) / 2}px)`, transition: "opacity 0.4s ease", filter: `drop-shadow(0 0 ${pulse ? "12px" : "4px"} ${o.color})` }}
+          style={{
+            transform: `translate(0px, 0px)`,
+            transition: "opacity 0.4s ease",
+            filter: `drop-shadow(0 0 ${pulse ? "12px" : "4px"} ${o.color})`,
+          }}
         />
-        <text x="120" y="165" textAnchor="middle" style={{ fontFamily: "DM Mono, monospace", fontSize: "11px", fill: o.color }}>{o.label}</text>
+        <text x="120" y="165" textAnchor="middle" style={{ fontFamily: "DM Mono, monospace", fontSize: "11px", fill: o.color }}>
+          {o.label}
+        </text>
       </svg>
     </div>
   )
@@ -317,16 +332,31 @@ function OrganHighlightViz({ data }: { data: unknown }) {
 
 // ── Timeline ──────────────────────────────────────────────────────────────────
 function TimelineViz({ data }: { data: unknown }) {
-  const events = (data as Array<{ year: string; event: string }>) ?? [
+  const DEFAULT_EVENTS = [
     { year: "1803", event: "Marbury v. Madison" },
     { year: "1857", event: "Dred Scott v. Sandford" },
     { year: "1954", event: "Brown v. Board" },
     { year: "1973", event: "Roe v. Wade" },
   ]
+
+  function parseEvents(raw: unknown): Array<{ year: string; event: string }> {
+    if (typeof raw === "string") {
+      try { return JSON.parse(raw) } catch { return DEFAULT_EVENTS }
+    }
+    if (Array.isArray(raw) && raw.length > 0) return raw
+    return DEFAULT_EVENTS
+  }
+
+  const events = parseEvents(data)
   const [visible, setVisible] = useState(0)
+
   useEffect(() => {
     let i = 0
-    const interval = setInterval(() => { i++; setVisible(i); if (i >= events.length) clearInterval(interval) }, 500)
+    const interval = setInterval(() => {
+      i++
+      setVisible(i)
+      if (i >= events.length) clearInterval(interval)
+    }, 500)
     return () => clearInterval(interval)
   }, [events.length])
 
@@ -356,14 +386,28 @@ function TimelineViz({ data }: { data: unknown }) {
 
 // ── Quote Reveal ──────────────────────────────────────────────────────────────
 function QuoteRevealViz({ data }: { data: unknown }) {
-  const d = data as Record<string, string> ?? {}
+  function parseQuoteData(raw: unknown): Record<string, string> {
+    if (typeof raw === "string") {
+      try { return JSON.parse(raw) } catch { return {} }
+    }
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      return raw as Record<string, string>
+    }
+    return {}
+  }
+
+  const d = parseQuoteData(data)
   const quote = d.quote ?? "An unexamined life is not worth living."
   const author = d.author ?? "Socrates"
   const [chars, setChars] = useState(0)
 
   useEffect(() => {
     let i = 0
-    const interval = setInterval(() => { i += 2; setChars(i); if (i >= quote.length) clearInterval(interval) }, 40)
+    const interval = setInterval(() => {
+      i += 2
+      setChars(i)
+      if (i >= quote.length) clearInterval(interval)
+    }, 40)
     return () => clearInterval(interval)
   }, [quote])
 

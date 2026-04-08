@@ -126,6 +126,14 @@ When you're ready, submit your attempt below and I'll give you Socratic feedback
     )
   }
 
+  function detectLanguage(code: string): string {
+    if (code.includes("fn main") || code.includes("use std::") || code.includes("let mut ")) return "rust"
+    if (code.includes("def ") || code.includes("import ") || code.includes("print(")) return "python"
+    if (code.includes("function ") || code.includes("const ") || code.includes("console.log")) return "javascript"
+    if (code.includes("public class") || code.includes("System.out")) return "java"
+    return "python"
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
       {/* Answer area */}
@@ -134,7 +142,7 @@ When you're ready, submit your attempt below and I'll give you Socratic feedback
         {isCode ? (
           <Judge0Terminal
             code={answer}
-            language="python"
+            language={detectLanguage(answer ||  "")}
             onCodeChange={setAnswer}
           />
         ) : (

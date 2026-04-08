@@ -95,6 +95,14 @@ Let's start! Tell me what you understand about this problem, or just say "let's 
     }
   }
 
+  function detectLanguage(code: string): string {
+    if (code.includes("fn main") || code.includes("use std::") || code.includes("let mut ")) return "rust"
+    if (code.includes("def ") || code.includes("import ") || code.includes("print(")) return "python"
+    if (code.includes("function ") || code.includes("const ") || code.includes("console.log")) return "javascript"
+    if (code.includes("public class") || code.includes("System.out")) return "java"
+    return "python"
+  }
+
   async function handleFinish() {
     if (submitting) return
     setSubmitting(true)
@@ -200,8 +208,8 @@ Let's start! Tell me what you understand about this problem, or just say "let's 
 
         {isCode ? (
           <Judge0Terminal
-            code={studentCode}
-            language="python"
+            code={studentCode} 
+            language={detectLanguage(studentCode || classwork.starterCode || "")}
             onCodeChange={setStudentCode}
             onResult={(r) => setExecutionResult(r)}
           />

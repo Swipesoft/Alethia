@@ -12,6 +12,12 @@ const LANGUAGE_IDS: Record<string, number> = {
   java: 62,
   cpp: 54,
   c: 50,
+  rust: 73,
+  go: 60,
+  ruby: 72,
+  kotlin: 78,
+  swift: 83,
+  r: 80,
 }
 
 async function executeCode(code: string, language: string, stdin?: string) {

@@ -21,7 +21,16 @@ export function DemonstrateReplicate({ classwork, studentId, moduleId, faculty, 
   const [submitting, setSubmitting] = useState(false)
   const [score, setScore] = useState<number | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
-  const language = faculty === "stem" ? "python" : "python"
+
+  function detectLanguage(): string {
+    const code = classwork.starterCode ?? classwork.demonstrationCode ?? ""
+    if (code.includes("fn main") || code.includes("use std::") || code.includes("let mut ")) return "rust"
+    if (code.includes("def ") || code.includes("import ") || code.includes("print(")) return "python"
+    if (code.includes("function ") || code.includes("const ") || code.includes("console.log")) return "javascript"
+    if (code.includes("public class") || code.includes("System.out")) return "java"
+    return "python"
+  }
+  const language = detectLanguage()
 
   async function handleSubmit() {
     if (submitting) return

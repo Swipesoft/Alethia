@@ -2,6 +2,18 @@
 
 import { useState } from "react"
 
+const LANGUAGE_IDS: Record<string, number> = {
+  python: 71,
+  javascript: 63,
+  typescript: 74,
+  java: 62,
+  cpp: 54,
+  c: 50,
+  rust: 73,      // ← add this
+  go: 60,
+  ruby: 72,
+}
+
 type ExecutionResult = {
   stdout: string
   stderr: string

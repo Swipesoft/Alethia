@@ -3,10 +3,25 @@
 import { useEffect, useState } from "react"
 import type { LectureBeat } from "@/lib/types"
 
+// ── Parse row helper — handles stringified arrays from Firestore ──────────────
+function parseRow(row: unknown): string[] {
+  if (Array.isArray(row)) return row.map(String)
+  if (typeof row === "string") {
+    try { return JSON.parse(row) } catch { return [row] }
+  }
+  return []
+}
+
+function parseRows(rows: unknown): string[][] {
+  if (!Array.isArray(rows)) return []
+  return rows.map(parseRow)
+}
+
 // ── Comparison Table ──────────────────────────────────────────────────────────
 type TableProps = { beat: Extract<LectureBeat, { type: "comparison_table" }> }
 
 export function TableBeat({ beat }: TableProps) {
+  const rows = parseRows(beat.rows)
   const [visibleRows, setVisibleRows] = useState(0)
 
   useEffect(() => {
@@ -14,17 +29,17 @@ export function TableBeat({ beat }: TableProps) {
     const interval = setInterval(() => {
       i++
       setVisibleRows(i)
-      if (i >= beat.rows.length) clearInterval(interval)
+      if (i >= rows.length) clearInterval(interval)
     }, 300)
     return () => clearInterval(interval)
-  }, [beat.rows?.length ?? 0])
+  }, [rows.length])
 
   return (
     <div className="surface" style={{ padding: "1.5rem", overflowX: "auto" }}>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>
-            {beat.headers.map((h, i) => (
+            {(beat.headers ?? []).map((h, i) => (
               <th
                 key={i}
                 style={{
@@ -45,7 +60,7 @@ export function TableBeat({ beat }: TableProps) {
           </tr>
         </thead>
         <tbody>
-          {(beat.rows ?? []).slice(0, visibleRows).filter(Boolean).map((row, i) => (
+          {rows.slice(0, visibleRows).map((row, i) => (
             <tr
               key={i}
               style={{
@@ -80,6 +95,7 @@ export function TableBeat({ beat }: TableProps) {
 type SummaryProps = { beat: Extract<LectureBeat, { type: "summary_card" }> }
 
 export function SummaryBeat({ beat }: SummaryProps) {
+  const points = Array.isArray(beat.points) ? beat.points : []
   const [visible, setVisible] = useState(0)
 
   useEffect(() => {
@@ -87,10 +103,10 @@ export function SummaryBeat({ beat }: SummaryProps) {
     const interval = setInterval(() => {
       i++
       setVisible(i)
-      if (i >= beat.points.length) clearInterval(interval)
+      if (i >= points.length) clearInterval(interval)
     }, 400)
     return () => clearInterval(interval)
-  }, [beat.points?.length ?? 0])
+  }, [points.length])
 
   return (
     <div
@@ -112,7 +128,7 @@ export function SummaryBeat({ beat }: SummaryProps) {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        {(beat.points ?? []).slice(0, visible).map((point, i) => (
+        {points.slice(0, visible).map((point, i) => (
           <div
             key={i}
             style={{
@@ -149,7 +165,7 @@ export function SummaryBeat({ beat }: SummaryProps) {
         ))}
       </div>
 
-      {visible >= beat.points.length && (
+      {visible >= points.length && points.length > 0 && (
         <div
           style={{
             marginTop: "0.5rem",
