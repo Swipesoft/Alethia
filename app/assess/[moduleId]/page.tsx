@@ -7,6 +7,11 @@ import { getStudent, updateModule, logEvent, updateCompetencyModel } from "@/lib
 //import { gemmaJSON } from "@/lib/novita"
 import type { StudentProfile, Module, AssessmentQuestion, AssessmentResult } from "@/lib/types"
 import { ImageUploadAssessor } from "@/components/assessment/ImageUploadAssessor"
+import ReactMarkdown from "react-markdown"
+import remarkMath from "remark-math"
+import rehypeKatex from "rehype-katex"
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism"
 
 export default function AssessPage({ params }: { params: Promise<{ moduleId: string }> }) {
   const { moduleId } = use(params)
@@ -20,6 +25,7 @@ export default function AssessPage({ params }: { params: Promise<{ moduleId: str
   const [results, setResults] = useState<AssessmentResult[] | null>(null)
   const [finalScore, setFinalScore] = useState<number | null>(null)
   const [archaAgentDecision, setArchagentDecision] = useState<string | null>(null)
+  const [progressionError, setProgressionError] = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -154,13 +160,19 @@ export default function AssessPage({ params }: { params: Promise<{ moduleId: str
     await logEvent({ studentId, type: "assessment_submitted", moduleId: module.moduleId, timestamp: Date.now(), payload: { averageScore, errorPatterns } })
 
     // Call ArchAgent for progression decision
-    const decisionRes = await fetch("/api/archagent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "decide_progression", studentId, payload: { moduleScore: averageScore, errorPatterns } }),
-    })
-    const { decision } = await decisionRes.json()
-    setArchagentDecision(decision?.reason ?? null)
+    try {
+      const decisionRes = await fetch("/api/archagent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "decide_progression", studentId, payload: { moduleScore: averageScore, errorPatterns } }),
+      })
+      if (!decisionRes.ok) throw new Error(`ArchAgent returned ${decisionRes.status}`)
+      const { decision } = await decisionRes.json()
+      setArchagentDecision(decision?.reason ?? null)
+    } catch (err) {
+      console.error("[progression]", err)
+      setProgressionError("Progression update failed. Your score was saved — go to the dashboard and refresh to continue.")
+    }
 
     // If score < 60 → trigger Reviewer for remedial plan
     if (averageScore < 60) {
@@ -237,6 +249,15 @@ export default function AssessPage({ params }: { params: Promise<{ moduleId: str
             </div>
           )}
 
+          {/* Progression error notice */}
+          {progressionError && (
+            <div style={{ background: "rgba(249,168,212,0.08)", border: "1px solid var(--faculty-medicine)", borderRadius: "var(--radius-sm)", padding: "1rem 1.25rem" }}>
+              <p style={{ fontSize: "0.8rem", color: "var(--faculty-medicine)", lineHeight: 1.6, fontFamily: "DM Mono, monospace" }}>
+                ⚠ {progressionError}
+              </p>
+            </div>
+          )}
+
           {/* Per-question breakdown */}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
             {results.map((r, i) => (
@@ -295,9 +316,53 @@ export default function AssessPage({ params }: { params: Promise<{ moduleId: str
             <p style={{ fontFamily: "DM Mono, monospace", fontSize: "0.65rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
               QUESTION {i + 1}
             </p>
-            <p style={{ fontSize: "1rem", lineHeight: 1.65, marginBottom: "1.25rem", color: "var(--text-primary)" }}>
-              {q.prompt}
-            </p>
+            <div style={{ marginBottom: "1.25rem" }}>
+              <ReactMarkdown
+                remarkPlugins={[remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+                components={{
+                  p: ({ children }) => (
+                    <p style={{ fontSize: "1rem", lineHeight: 1.65, marginBottom: "0.6rem", color: "var(--text-primary)" }}>
+                      {children}
+                    </p>
+                  ),
+                  code: ({ className, children }: { className?: string; children?: React.ReactNode }) => {
+                    const langMatch = /language-(\w+)/.exec(className ?? "")
+                    if (!langMatch) {
+                      // No language tag → inline code span
+                      return (
+                        <code
+                          style={{
+                            fontFamily: "DM Mono, monospace",
+                            background: "var(--bg-elevated)",
+                            border: "1px solid var(--border)",
+                            padding: "0.1em 0.4em",
+                            borderRadius: "3px",
+                            fontSize: "0.875em",
+                            color: "var(--accent)",
+                          }}
+                        >
+                          {children}
+                        </code>
+                      )
+                    }
+                    // Has language tag → fenced code block
+                    return (
+                      <SyntaxHighlighter
+                        language={langMatch[1]}
+                        style={oneDark}
+                        customStyle={{ borderRadius: "var(--radius-sm)", fontSize: "0.875rem", marginBottom: "0.75rem", marginTop: "0.25rem" }}
+                      >
+                        {String(children).replace(/\n$/, "")}
+                      </SyntaxHighlighter>
+                    )
+                  },
+                  pre: ({ children }) => <>{children}</>,
+                }}
+              >
+                {q.prompt}
+              </ReactMarkdown>
+            </div>
 
             {q.type === "mcq" && q.options && (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>

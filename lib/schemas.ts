@@ -215,6 +215,8 @@ export const ClassworkPlanSchema = z.array(ClassworkPlanItemSchema).min(0).max(1
 
 // ─── Assessment questions ─────────────────────────────────────────────────────
 
+const PROSE_KEYWORDS = /\b(explain|describe|analyze|analyse|what is the|complexity of|define|summarize|summarise|discuss)\b/i
+
 export const AssessmentQuestionSchema = z.object({
   questionId: z.string().min(1),
   prompt: z.string().min(1),
@@ -224,6 +226,48 @@ export const AssessmentQuestionSchema = z.object({
   starterCode: z.string().optional(),
   options: z.array(z.string()).optional(),
   correctIndex: z.number().int().min(0).optional(),
+}).superRefine((q, ctx) => {
+  if (q.type === "code_execution") {
+    if (!q.starterCode || q.starterCode.trim() === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["starterCode"],
+        message: "code_execution questions must include a starterCode scaffold (function signature + comments)",
+      })
+    }
+    if (!q.expectedOutput || q.expectedOutput.trim() === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["expectedOutput"],
+        message: "code_execution questions must include expectedOutput (the stdout a correct solution should produce)",
+      })
+    }
+    if (PROSE_KEYWORDS.test(q.prompt)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["prompt"],
+        message:
+          "code_execution prompts must ask for code only — remove explanation/analysis language (explain, describe, analyze, etc.). The student's answer runs directly in a code terminal; any prose will crash it.",
+      })
+    }
+  }
+
+  if (q.type === "mcq") {
+    if (!q.options || q.options.length !== 4) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["options"],
+        message: "mcq questions must have exactly 4 options",
+      })
+    }
+    if (q.correctIndex === undefined || q.correctIndex === null || q.correctIndex < 0 || q.correctIndex > 3) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["correctIndex"],
+        message: "mcq questions must have a correctIndex between 0 and 3",
+      })
+    }
+  }
 })
 
 export const AssessmentQuestionsSchema = z.object({
