@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from "react"
 import type { Classwork, Faculty } from "@/lib/types"
 import { Judge0Terminal } from "./Judge0Terminal"
+import { ChatMessage } from "@/components/shared/ChatMessage"
+import { detectLanguage } from "@/lib/detect-language"
 
 type Props = {
   classwork: Classwork
@@ -95,14 +97,6 @@ Let's start! Tell me what you understand about this problem, or just say "let's 
     }
   }
 
-  function detectLanguage(code: string): string {
-    if (code.includes("fn main") || code.includes("use std::") || code.includes("let mut ")) return "rust"
-    if (code.includes("def ") || code.includes("import ") || code.includes("print(")) return "python"
-    if (code.includes("function ") || code.includes("const ") || code.includes("console.log")) return "javascript"
-    if (code.includes("public class") || code.includes("System.out")) return "java"
-    return "python"
-  }
-
   async function handleFinish() {
     if (submitting) return
     setSubmitting(true)
@@ -166,11 +160,17 @@ Let's start! Tell me what you understand about this problem, or just say "let's 
                 fontSize: "0.85rem",
                 color: msg.role === "user" ? "var(--accent)" : "var(--text-secondary)",
                 lineHeight: 1.65,
-                whiteSpace: "pre-wrap",
               }}>
-                {msg.content}
-                {streaming && i === messages.length - 1 && msg.role === "assistant" && (
-                  <span style={{ display: "inline-block", width: "2px", height: "13px", background: "var(--accent)", marginLeft: "2px", verticalAlign: "middle", animation: "fade-in 0.5s ease infinite alternate" }} />
+                {/* Stream in-progress: plain text to avoid re-parsing every character */}
+                {streaming && i === messages.length - 1 && msg.role === "assistant" ? (
+                  <span style={{ whiteSpace: "pre-wrap" }}>
+                    {msg.content}
+                    <span style={{ display: "inline-block", width: "2px", height: "13px", background: "var(--accent)", marginLeft: "2px", verticalAlign: "middle", animation: "fade-in 0.5s ease infinite alternate" }} />
+                  </span>
+                ) : msg.role === "assistant" ? (
+                  <ChatMessage content={msg.content} />
+                ) : (
+                  <span style={{ whiteSpace: "pre-wrap" }}>{msg.content}</span>
                 )}
               </div>
             </div>
@@ -208,10 +208,11 @@ Let's start! Tell me what you understand about this problem, or just say "let's 
 
         {isCode ? (
           <Judge0Terminal
-            code={studentCode} 
+            code={studentCode}
             language={detectLanguage(studentCode || classwork.starterCode || "")}
             onCodeChange={setStudentCode}
             onResult={(r) => setExecutionResult(r)}
+            taskContext={classwork.prompt}
           />
         ) : (
           <textarea

@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from "firebase/app"
-import { getFirestore } from "firebase/firestore"
+import { initializeFirestore, memoryLocalCache, getFirestore } from "firebase/firestore"
 import { getStorage } from "firebase/storage"
 
 const firebaseConfig = {
@@ -13,6 +13,18 @@ const firebaseConfig = {
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig)
 
-export const db = getFirestore(app)
+// Use in-memory cache: the app runs in Next.js API routes (Node.js) where
+// IndexedDB is unavailable. The default getFirestore() enables disk-based
+// offline persistence whose compaction mutex fires on concurrent writes.
+export const db = (() => {
+  try {
+    return initializeFirestore(app, { localCache: memoryLocalCache() })
+  } catch {
+    // initializeFirestore throws if called twice on the same app instance
+    // (e.g. hot-reload in dev). Fall back to the already-initialised instance.
+    return getFirestore(app)
+  }
+})()
+
 export const storage = getStorage(app)
 export default app

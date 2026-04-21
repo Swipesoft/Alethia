@@ -12,6 +12,8 @@ import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism"
+import { Judge0Terminal } from "@/components/classwork/Judge0Terminal"
+import { detectLanguage } from "@/lib/detect-language"
 
 export default function AssessPage({ params }: { params: Promise<{ moduleId: string }> }) {
   const { moduleId } = use(params)
@@ -34,7 +36,9 @@ export default function AssessPage({ params }: { params: Promise<{ moduleId: str
       const p = await getStudent(studentId)
       if (!p) { router.push("/onboarding"); return }
       const m = p.curriculum.find((c) => c.moduleId === moduleId)
-      if (!m) { router.push("/dashboard"); return }
+      if (!m || (m.status !== "active" && m.status !== "remedial")) {
+        router.push("/dashboard"); return
+      }
       setProfile(p)
       setModule(m)
 
@@ -89,7 +93,7 @@ export default function AssessPage({ params }: { params: Promise<{ moduleId: str
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               code: studentAnswer,
-              language: module.faculty === "stem" ? "python" : "python",
+              language: detectLanguage(q.starterCode ?? studentAnswer),
               expectedOutput: q.expectedOutput,
               rubric: q.rubric,
               studentId: profile.studentId,
@@ -295,12 +299,12 @@ export default function AssessPage({ params }: { params: Promise<{ moduleId: str
       <div style={{ maxWidth: "720px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
         {/* Header */}
         <div className="animate-fade-up">
-          <button
-            onClick={() => router.push(`/lecture/${moduleId}`)}
-            style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontFamily: "DM Mono, monospace", fontSize: "0.75rem", marginBottom: "1rem", display: "block" }}
-          >
-            ← Back to Lecture
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem", padding: "0.6rem 1rem", background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: "var(--radius-sm)" }}>
+            <span style={{ fontSize: "0.8rem" }}>🔒</span>
+            <p style={{ fontFamily: "DM Mono, monospace", fontSize: "0.7rem", color: "#fbbf24" }}>
+              You must submit this assessment before you can progress to the next module
+            </p>
+          </div>
           <p style={{ fontFamily: "DM Mono, monospace", fontSize: "0.7rem", color: "var(--accent)", marginBottom: "0.4rem" }}>
             ASSESSMENT · {module?.faculty?.toUpperCase()} · {module?.assessmentEnvironment?.toUpperCase()}
           </p>
@@ -390,27 +394,12 @@ export default function AssessPage({ params }: { params: Promise<{ moduleId: str
             )}
 
             {q.type === "code_execution" && (
-              <div>
-                <textarea
-                  style={{
-                    width: "100%",
-                    minHeight: "200px",
-                    background: "#0d0d16",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius-sm)",
-                    color: "#a0aec0",
-                    fontFamily: "DM Mono, monospace",
-                    fontSize: "0.875rem",
-                    padding: "1rem",
-                    resize: "vertical",
-                    outline: "none",
-                    lineHeight: 1.7,
-                  }}
-                  value={answers[q.questionId] ?? q.starterCode ?? ""}
-                  onChange={(e) => setAnswers((prev) => ({ ...prev, [q.questionId]: e.target.value }))}
-                  placeholder={q.starterCode ?? "# Write your solution here..."}
-                />
-              </div>
+              <Judge0Terminal
+                code={answers[q.questionId] ?? q.starterCode ?? ""}
+                language={detectLanguage(q.starterCode ?? "")}
+                onCodeChange={(val) => setAnswers((prev) => ({ ...prev, [q.questionId]: val }))}
+                taskContext={q.prompt}
+              />
             )}
 
             {q.type === "image_upload" && module && (

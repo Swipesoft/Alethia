@@ -15,6 +15,16 @@ const STATUS_STYLES: Record<Module["status"], { color: string; label: string; bg
 }
 
 // ─── Smart navigation helpers ─────────────────────────────────────────────────
+
+/** True when all classwork is done but the module assessment has not been submitted yet. */
+function isAssessmentPending(module: Module): boolean {
+  if (!module.sequenceGenerated) return false
+  const seq = module.sequence ?? []
+  const idx = module.currentSequenceIndex ?? 0
+  const currentItem = seq[idx]
+  return (!currentItem || currentItem.kind === "module_assessment") && module.score === undefined
+}
+
 function getModuleNextRoute(module: Module): string {
   // Not yet expanded into subtopics → generate sequence first
   if (!module.sequenceGenerated) {
@@ -287,13 +297,26 @@ export default function DashboardPage() {
                   )}
                 </div>
               </div>
-              <button
-                className="btn-primary"
-                onClick={() => navigateToModuleNext(activeModule)}
-                style={{ whiteSpace: "nowrap" }}
-              >
-                {getModuleCTA(activeModule)}
-              </button>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", alignItems: "flex-end" }}>
+                {isAssessmentPending(activeModule) && (
+                  <div style={{ padding: "0.5rem 0.875rem", background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "var(--radius-sm)", textAlign: "right" }}>
+                    <p style={{ fontFamily: "DM Mono, monospace", fontSize: "0.65rem", color: "#fbbf24", whiteSpace: "nowrap" }}>
+                      🔒 assessment required to advance
+                    </p>
+                  </div>
+                )}
+                <button
+                  className="btn-primary"
+                  onClick={() => navigateToModuleNext(activeModule)}
+                  style={{
+                    whiteSpace: "nowrap",
+                    background: isAssessmentPending(activeModule) ? "#fbbf24" : undefined,
+                    color: isAssessmentPending(activeModule) ? "#08080f" : undefined,
+                  }}
+                >
+                  {getModuleCTA(activeModule)}
+                </button>
+              </div>
             </div>
           )}
 

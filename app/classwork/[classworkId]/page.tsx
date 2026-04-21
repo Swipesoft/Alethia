@@ -8,6 +8,7 @@ import type { StudentProfile, Module, Classwork } from "@/lib/types"
 import { DemonstrateReplicate } from "@/components/classwork/DemonstrateReplicate"
 import { SocraticChat } from "@/components/classwork/SocraticChat"
 import { Collaborative } from "@/components/classwork/Collaborative"
+import { ChatMessage } from "@/components/shared/ChatMessage"
 
 export default function ClassworkPage({
   params,
@@ -31,7 +32,9 @@ export default function ClassworkPage({
       if (!p) { router.push("/onboarding"); return }
 
       const m = p.curriculum.find((c) => c.moduleId === moduleId)
-      if (!m) { router.push("/dashboard"); return }
+      if (!m || (m.status !== "active" && m.status !== "remedial")) {
+        router.push("/dashboard"); return
+      }
 
       const cw = (m.classworks ?? []).find((c) => c.classworkId === classworkId)
       if (!cw) { router.push("/dashboard"); return }
@@ -102,15 +105,15 @@ export default function ClassworkPage({
 
       {/* Classwork content */}
       <div style={{ flex: 1, padding: "1.5rem 2rem", overflow: "auto" }}>
-        <div style={{ maxWidth: "900px", margin: "0 auto" }}>
+        <div style={{ maxWidth: "1300px", margin: "0 auto" }}>
           {/* Title + prompt */}
           <div className="animate-fade-up" style={{ marginBottom: "1.5rem" }}>
-            <h1 style={{ fontSize: "1.5rem", fontFamily: "Playfair Display, serif", marginBottom: "0.5rem" }}>
+            <h1 style={{ fontSize: "1.5rem", fontFamily: "Playfair Display, serif", marginBottom: "0.75rem" }}>
               {classwork.title}
             </h1>
-            <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", lineHeight: 1.7 }}>
-              {classwork.prompt}
-            </p>
+            <div style={{ color: "var(--text-secondary)", fontSize: "0.9rem", lineHeight: 1.7 }}>
+              <ChatMessage content={classwork.prompt} />
+            </div>
           </div>
 
           {/* Render the appropriate classwork component */}

@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from "react"
 import type { Classwork } from "@/lib/types"
 import { Judge0Terminal } from "./Judge0Terminal"
+import { ChatMessage } from "@/components/shared/ChatMessage"
+import { detectLanguage } from "@/lib/detect-language"
 
 type Props = {
   classwork: Classwork
@@ -18,11 +20,9 @@ export function SocraticChat({ classwork, studentId, moduleId, onComplete }: Pro
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: `Let's work through this together. Have a go at the task — I won't give you the answer directly, but I'll guide you with questions if you get stuck. 
+      content: `Let's work through this together. I won't give you the answer directly — but ask me anything if you get stuck and I'll guide you with questions.
 
-**Task:** ${classwork.prompt}
-
-When you're ready, submit your attempt below and I'll give you Socratic feedback.`,
+Have a go at the task in your workspace on the right. When you're happy with your answer, hit **Submit**.`,
     },
   ])
   const [input, setInput] = useState("")
@@ -30,7 +30,6 @@ When you're ready, submit your attempt below and I'll give you Socratic feedback
   const [submitting, setSubmitting] = useState(false)
   const [score, setScore] = useState<number | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
-  const [showChat, setShowChat] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const isCode = classwork.assessmentType === "code_execution"
 
@@ -92,7 +91,6 @@ When you're ready, submit your attempt below and I'll give you Socratic feedback
   async function handleSubmit() {
     if (submitting) return
     setSubmitting(true)
-
     try {
       const res = await fetch("/api/classwork/submit", {
         method: "POST",
@@ -112,6 +110,7 @@ When you're ready, submit your attempt below and I'll give you Socratic feedback
     }
   }
 
+  // ─── Result screen ────────────────────────────────────────────────────────
   if (score !== null) {
     return (
       <div className="surface glow-border animate-fade-up" style={{ padding: "2rem", textAlign: "center", display: "flex", flexDirection: "column", gap: "1rem", alignItems: "center" }}>
@@ -126,98 +125,129 @@ When you're ready, submit your attempt below and I'll give you Socratic feedback
     )
   }
 
-  function detectLanguage(code: string): string {
-    if (code.includes("fn main") || code.includes("use std::") || code.includes("let mut ")) return "rust"
-    if (code.includes("def ") || code.includes("import ") || code.includes("print(")) return "python"
-    if (code.includes("function ") || code.includes("const ") || code.includes("console.log")) return "javascript"
-    if (code.includes("public class") || code.includes("System.out")) return "java"
-    return "python"
-  }
-
+  // ─── Side-by-side layout ──────────────────────────────────────────────────
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-      {/* Answer area */}
-      <div className="surface" style={{ padding: "1.5rem" }}>
-        <p style={{ fontFamily: "DM Mono, monospace", fontSize: "0.7rem", color: "var(--accent)", marginBottom: "0.75rem" }}>YOUR ATTEMPT</p>
+    <div style={{ display: "flex", gap: "1.5rem", minHeight: "520px" }}>
+
+      {/* Left — Socratic hint chat */}
+      <div style={{
+        flex: "0 0 42%",
+        display: "flex",
+        flexDirection: "column",
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius)",
+        overflow: "hidden",
+        minWidth: 0,
+      }}>
+        {/* Chat header */}
+        <div style={{ padding: "0.875rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.6rem" }}>
+          <span style={{ fontSize: "1rem" }}>🏛️</span>
+          <div>
+            <p style={{ fontSize: "0.8rem", fontWeight: 500 }}>Athena — Socratic Guide</p>
+            <p style={{ fontSize: "0.65rem", color: "var(--accent)", fontFamily: "DM Mono, monospace" }}>
+              {streaming ? "thinking..." : "ask for a hint"}
+            </p>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          {messages.map((msg, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: msg.role === "user" ? "flex-end" : "flex-start" }}>
+              <div style={{
+                maxWidth: "90%",
+                background: msg.role === "user" ? "var(--accent-dim)" : "var(--bg-elevated)",
+                border: `1px solid ${msg.role === "user" ? "var(--border-glow)" : "var(--border)"}`,
+                borderRadius: msg.role === "user" ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
+                padding: "0.6rem 0.875rem",
+                fontSize: "0.85rem",
+                color: msg.role === "user" ? "var(--accent)" : "var(--text-secondary)",
+                lineHeight: 1.65,
+              }}>
+                {streaming && i === messages.length - 1 && msg.role === "assistant" ? (
+                  <span style={{ whiteSpace: "pre-wrap" }}>
+                    {msg.content}
+                    <span style={{ display: "inline-block", width: "2px", height: "13px", background: "var(--accent)", marginLeft: "2px", verticalAlign: "middle", animation: "fade-in 0.5s ease infinite alternate" }} />
+                  </span>
+                ) : msg.role === "assistant" ? (
+                  <ChatMessage content={msg.content} />
+                ) : (
+                  <span style={{ whiteSpace: "pre-wrap" }}>{msg.content}</span>
+                )}
+              </div>
+            </div>
+          ))}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Chat input */}
+        <div style={{ padding: "0.75rem", borderTop: "1px solid var(--border)", display: "flex", gap: "0.5rem" }}>
+          <input
+            className="input-field"
+            placeholder="Ask for a hint..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+            disabled={streaming}
+            style={{ fontSize: "0.85rem", padding: "0.5rem 0.875rem" }}
+          />
+          <button
+            className="btn-primary"
+            onClick={sendMessage}
+            disabled={!input.trim() || streaming}
+            style={{ padding: "0.5rem 0.875rem", opacity: !input.trim() || streaming ? 0.4 : 1 }}
+          >↑</button>
+        </div>
+      </div>
+
+      {/* Right — Student workspace */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.75rem", minWidth: 0 }}>
+        <div style={{
+          padding: "0.5rem 0.875rem",
+          background: "var(--bg-elevated)",
+          border: "1px solid var(--border)",
+          borderLeft: "3px solid var(--accent)",
+          borderRadius: "var(--radius-sm)",
+        }}>
+          <p style={{ fontFamily: "DM Mono, monospace", fontSize: "0.65rem", color: "var(--accent)" }}>YOUR ATTEMPT</p>
+          <p style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "0.15rem" }}>
+            write your answer here — use the chat on the left for hints
+          </p>
+        </div>
+
         {isCode ? (
           <Judge0Terminal
             code={answer}
-            language={detectLanguage(answer ||  "")}
+            language={detectLanguage(answer || classwork.starterCode || "")}
             onCodeChange={setAnswer}
+            taskContext={classwork.prompt}
           />
         ) : (
           <textarea
             style={{
-              width: "100%", minHeight: "160px",
+              flex: 1, minHeight: "320px",
               background: "var(--bg-elevated)", border: "1px solid var(--border)",
               borderRadius: "var(--radius-sm)", color: "var(--text-primary)",
               fontFamily: "DM Sans, sans-serif", fontSize: "0.9rem",
-              padding: "0.875rem", resize: "vertical", outline: "none", lineHeight: 1.7,
+              padding: "0.875rem", resize: "none", outline: "none", lineHeight: 1.7,
             }}
             value={answer}
             onChange={(e) => setAnswer(e.target.value)}
             placeholder="Write your response here..."
           />
         )}
-      </div>
 
-      {/* Socratic hint chat */}
-      <div>
-        <button
-          onClick={() => setShowChat((v) => !v)}
-          className="btn-ghost"
-          style={{ fontSize: "0.875rem", marginBottom: "0.75rem" }}
-        >
-          {showChat ? "Hide" : "💬 Ask for a hint (Socratic guide)"}
-        </button>
-
-        {showChat && (
-          <div className="surface animate-fade-up" style={{ overflow: "hidden" }}>
-            <div style={{ maxHeight: "240px", overflowY: "auto", padding: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-              {messages.map((msg, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: msg.role === "user" ? "flex-end" : "flex-start" }}>
-                  <div style={{
-                    maxWidth: "80%",
-                    background: msg.role === "user" ? "var(--accent-dim)" : "var(--bg-elevated)",
-                    border: `1px solid ${msg.role === "user" ? "var(--border-glow)" : "var(--border)"}`,
-                    borderRadius: "12px",
-                    padding: "0.6rem 0.875rem",
-                    fontSize: "0.85rem",
-                    color: msg.role === "user" ? "var(--accent)" : "var(--text-secondary)",
-                    lineHeight: 1.6,
-                    whiteSpace: "pre-wrap",
-                  }}>
-                    {msg.content}
-                  </div>
-                </div>
-              ))}
-              <div ref={bottomRef} />
-            </div>
-            <div style={{ padding: "0.75rem", borderTop: "1px solid var(--border)", display: "flex", gap: "0.5rem" }}>
-              <input
-                className="input-field"
-                placeholder="Ask for a hint..."
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                disabled={streaming}
-                style={{ fontSize: "0.85rem", padding: "0.5rem 0.875rem" }}
-              />
-              <button className="btn-primary" onClick={sendMessage} disabled={!input.trim() || streaming} style={{ padding: "0.5rem 0.875rem", opacity: !input.trim() || streaming ? 0.4 : 1 }}>↑</button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <button
-          className="btn-primary"
-          onClick={handleSubmit}
-          disabled={submitting || !answer.trim()}
-          style={{ opacity: submitting || !answer.trim() ? 0.4 : 1 }}
-        >
-          {submitting ? "Grading..." : "Submit Answer →"}
-        </button>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button
+            className="btn-primary"
+            onClick={handleSubmit}
+            disabled={submitting || !answer.trim()}
+            style={{ opacity: submitting || !answer.trim() ? 0.4 : 1 }}
+          >
+            {submitting ? "Grading..." : "Submit Answer →"}
+          </button>
+        </div>
       </div>
     </div>
   )
