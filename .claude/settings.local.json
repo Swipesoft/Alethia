@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep *)",
+      "Bash(sed -i 's|from \"@/lib/firestore\"|from \"@/app/actions/student\"|g' 'C:/Users/emmyf/Downloads/alethiaV2/alethia-05-01b/alethia/app/assess/[moduleId]/page.tsx' 'C:/Users/emmyf/Downloads/alethiaV2/alethia-05-01b/alethia/app/classwork/[classworkId]/page.tsx' 'C:/Users/emmyf/Downloads/alethiaV2/alethia-05-01b/alethia/app/lecture/[moduleId]/page.tsx' 'C:/Users/emmyf/Downloads/alethiaV2/alethia-05-01b/alethia/app/module/[moduleId]/start/page.tsx' 'C:/Users/emmyf/Downloads/alethiaV2/alethia-05-01b/alethia/app/subtopic/[subtopicId]/page.tsx')",
+      "Bash(sed -i 's|from \"@/lib/firestore-sose\"|from \"@/app/actions/sose\"|g' 'C:/Users/emmyf/Downloads/alethiaV2/alethia-05-01b/alethia/app/sose/report/[submissionId]/page.tsx')",
+      "Bash(npm run *)"
+    ]
+  }
+}
